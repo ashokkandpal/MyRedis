@@ -1,23 +1,6 @@
-﻿using MyRedis.Commands;
-using MyRedis.Core;
+﻿using MyRedis.Server;
 
-Console.WriteLine("This is my own redis, Phase 1 - for learning purposes only. It is not intended for production use.");
+Console.WriteLine("MyRedis Server Starting...");
 
-
-RedisStore store = new RedisStore();
-CommandHandler handler = new CommandHandler(store);
-
-while (true)
-{
-    Console.Write("> ");
-    string? input = Console.ReadLine();
-
-    if (string.IsNullOrEmpty(input))
-        continue;
-
-    if (input.Equals("exit", StringComparison.OrdinalIgnoreCase))
-        break;
-
-    string response = handler.Handle(input);
-    Console.WriteLine(response);
-}
+TcpServer server = new TcpServer();
+server.Start();
