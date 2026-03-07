@@ -14,7 +14,12 @@ namespace MyRedis.Commands
             {
                 { "SET", new SetCommand(store) },
                 { "GET", new GetCommand(store) },
-                { "DEL", new DelCommand(store) } 
+                { "DEL", new DelCommand(store) },
+                { "EXISTS", new ExistsCommand(store) },
+                { "KEYS", new GetAllKeyCommand(store) },
+                { "FLUSHALL", new FlushAllCommand(store) },
+                { "DBSIZE", new DbSizeCommand(store) },
+                { "INCR", new IncrCommand(store) }
             };
         }
 
@@ -27,9 +32,7 @@ namespace MyRedis.Commands
 
             if (_commands.TryGetValue(inputParts[0], out ICommand? command))
             {
-                string[] args = inputParts.Skip(1)
-                    .Select(a => a.Trim('"'))
-                    .ToArray();
+                string[] args = [.. inputParts.Skip(1).Select(a => a.Trim('"'))];
 
                 return command.Execute(args);
             }

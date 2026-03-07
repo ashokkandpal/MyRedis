@@ -60,6 +60,7 @@ namespace MyRedis.Protocol
 
             if (value is int i)
                 return WriteInteger(i);
+
             if (value is long l)
                 return WriteInteger(l);
 
@@ -68,8 +69,14 @@ namespace MyRedis.Protocol
                 if (s == "OK")
                     return WriteSimpleString("OK");
 
-                if (s.StartsWith("Error"))
-                    return WriteError(s.Replace("Error", "").Trim());
+                if (s == "(nil)")
+                    return WriteBulkString(null);
+
+                if (s.StartsWith("-ERR"))
+                    return $"{s}\r\n";
+
+                if (long.TryParse(s, out long number))
+                    return WriteInteger(number);
 
                 return WriteBulkString(s);
             }
