@@ -1,4 +1,4 @@
-﻿using MyRedis.Commands.Hash;
+using MyRedis.Commands.Hash;
 using MyRedis.Commands.List;
 using MyRedis.Commands.Set;
 using MyRedis.Commands.SortedSet;
