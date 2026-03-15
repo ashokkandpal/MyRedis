@@ -5,6 +5,7 @@
     /// </summary>
     public enum DataType
     {
+        None,
         String,
         List,
         Hash,
