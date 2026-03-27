@@ -15,6 +15,7 @@ namespace MyRedis.Server
         {
             _listener = new TcpListener(IPAddress.Any, port);
             _redisStore = new();
+            _redisStore.StartExpiryBackgroundTask();
             _commandHandler = new CommandHandler(_redisStore);
         }
         

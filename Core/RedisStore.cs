@@ -5,20 +5,50 @@ namespace MyRedis.Core
     public class RedisStore
     {
         private readonly ConcurrentDictionary<string, object> _redisDatabase = new();
+        private readonly ConcurrentDictionary<string, long> _expiry = new();
 
         private const string WrongTypeError =
             "-WRONGTYPE Operation against a key holding the wrong kind of value";
 
         public RedisStore() { }
 
-        public string Set(string key, string value)
+        private bool IsExpired(string key)
+        {
+            if (_expiry.TryGetValue(key, out long expiryTime))
+            {
+                if (DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() > expiryTime)
+                {
+                    _redisDatabase.TryRemove(key, out _);
+                    _expiry.TryRemove(key, out _);
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        private void SetExpiry(string key, long milliseconds)
+        {
+            _expiry[key] = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() + milliseconds;
+        }
+
+        public string Set(string key, string value, long? expiryMilliseconds = null)
         {
             _redisDatabase[key] = value;
+            if (expiryMilliseconds.HasValue)
+            {
+                SetExpiry(key, expiryMilliseconds.Value);
+            }
+            else
+            {
+                _expiry.TryRemove(key, out _);
+            }
             return "OK";
         }
 
         public string? Get(string key)
         {
+            if (IsExpired(key)) return null;
+
             if (!_redisDatabase.TryGetValue(key, out object? obj))
                 return null;
 
@@ -30,32 +60,37 @@ namespace MyRedis.Core
 
         public bool Delete(string key)
         {
+            _expiry.TryRemove(key, out _);
             return _redisDatabase.TryRemove(key, out _);
         }
 
         public bool Exists(string key)
         {
+            if (IsExpired(key)) return false;
             return _redisDatabase.ContainsKey(key);
         }
 
         public List<string> GetAllKeys()
         {
-            return [.. _redisDatabase.Keys];
+            return [.. _redisDatabase.Keys.Where(k => !IsExpired(k))];
         }
 
         public string FlushAll()
         {
             _redisDatabase.Clear();
+            _expiry.Clear();
             return "OK";
         }
 
         public int DbSize()
         {
-            return _redisDatabase.Count;
+            return _redisDatabase.Keys.Count(k => !IsExpired(k));
         }
 
         public string? Incr(string key)
         {
+            if (IsExpired(key)) return null; // Or just let Exists handle it
+
             if (Exists(key) && GetDataType(key) != DataType.String)
                 return WrongTypeError;
 
@@ -75,6 +110,8 @@ namespace MyRedis.Core
         #region Helper Method
         public DataType GetDataType(string key)
         {
+            if (IsExpired(key)) return DataType.None;
+
             if (!_redisDatabase.TryGetValue(key, out object? value))
                 return DataType.None;
 
@@ -93,6 +130,8 @@ namespace MyRedis.Core
         #region List Commands        
         public int LPush(string key, string value)
         {
+            if (IsExpired(key)) { /* let it recreate list */ }
+
             if (Exists(key) && GetDataType(key) != DataType.List)
                 throw new InvalidOperationException(WrongTypeError);
 
@@ -106,6 +145,8 @@ namespace MyRedis.Core
 
         public int RPush(string key, string value)
         {
+            if (IsExpired(key)) { /* let it recreate list */ }
+
             if (Exists(key) && GetDataType(key) != DataType.List)
                 throw new InvalidOperationException(WrongTypeError);
 
@@ -119,6 +160,7 @@ namespace MyRedis.Core
 
         public string? LPop(string key)
         {
+            if (IsExpired(key)) return null;
             if (!Exists(key)) return null;
             if (GetDataType(key) != DataType.List)
                 throw new InvalidOperationException(WrongTypeError);
@@ -135,6 +177,7 @@ namespace MyRedis.Core
 
         public string? RPop(string key)
         {
+            if (IsExpired(key)) return null;
             if (!Exists(key)) return null;
             if (GetDataType(key) != DataType.List)
                 throw new InvalidOperationException(WrongTypeError);
@@ -151,6 +194,7 @@ namespace MyRedis.Core
 
         public List<string> LRange(string key, int start, int stop)
         {
+            if (IsExpired(key)) return [];
             if (!Exists(key)) return [];
             if (GetDataType(key) != DataType.List)
                 throw new InvalidOperationException(WrongTypeError);
@@ -169,6 +213,7 @@ namespace MyRedis.Core
 
         public int LLen(string key)
         {
+            if (IsExpired(key)) return 0;
             if (!Exists(key)) return 0;
             if (GetDataType(key) != DataType.List)
                 throw new InvalidOperationException(WrongTypeError);
@@ -197,6 +242,7 @@ namespace MyRedis.Core
 
         public string? HGet(string key, string field)
         {
+            if (IsExpired(key)) return null;
             if (!Exists(key)) return null;
             if (GetDataType(key) != DataType.Hash)
                 throw new InvalidOperationException(WrongTypeError);
@@ -211,6 +257,7 @@ namespace MyRedis.Core
 
         public Dictionary<string, string> HGetAll(string key)
         {
+            if (IsExpired(key)) return [];
             if (!Exists(key)) return [];
             if (GetDataType(key) != DataType.Hash)
                 throw new InvalidOperationException(WrongTypeError);
@@ -221,6 +268,7 @@ namespace MyRedis.Core
 
         public bool HDel(string key, string field)
         {
+            if (IsExpired(key)) return false;
             if (!Exists(key)) return false;
             if (GetDataType(key) != DataType.Hash)
                 throw new InvalidOperationException(WrongTypeError);
@@ -244,6 +292,7 @@ namespace MyRedis.Core
 
         public HashSet<string> SMembers(string key)
         {
+            if (IsExpired(key)) return [];
             if (!Exists(key)) return [];
             if (GetDataType(key) != DataType.Set)
                 throw new InvalidOperationException(WrongTypeError);
@@ -254,6 +303,7 @@ namespace MyRedis.Core
 
         public int SRem(string key, string value)
         {
+            if (IsExpired(key)) return 0;
             if (!Exists(key)) return 0;
             if (GetDataType(key) != DataType.Set)
                 throw new InvalidOperationException(WrongTypeError);
@@ -264,6 +314,7 @@ namespace MyRedis.Core
 
         public bool SIsMember(string key, string value)
         {
+            if (IsExpired(key)) return false;
             if (!Exists(key)) return false;
             if (GetDataType(key) != DataType.Set)
                 throw new InvalidOperationException(WrongTypeError);
@@ -346,12 +397,69 @@ namespace MyRedis.Core
 
         public int ZCard(string key)
         {
+            if (IsExpired(key)) return 0;
             if (!Exists(key)) return 0;
             if (GetDataType(key) != DataType.SortedSet)
                 throw new InvalidOperationException(WrongTypeError);
 
             SortedDictionary<double, string>? sortedSet = _redisDatabase[key] as SortedDictionary<double, string>;
             lock (sortedSet!) return sortedSet.Count;
+        }
+
+        public string Expire(string key, long seconds)
+        {
+            if (!Exists(key) || IsExpired(key)) return "0";
+            SetExpiry(key, seconds * 1000);
+            return "1";
+        }
+
+        public string PExpire(string key, long milliseconds)
+        {
+            if (!Exists(key) || IsExpired(key)) return "0";
+            SetExpiry(key, milliseconds);
+            return "1";
+        }
+
+        public string TTL(string key)
+        {
+            if (!Exists(key) || IsExpired(key)) return "-2";
+            if (!_expiry.TryGetValue(key, out long expiryTime)) return "-1";
+            
+            long remaining = (expiryTime - DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()) / 1000;
+            return Math.Max(1, remaining).ToString();
+        }
+
+        public string PTTL(string key)
+        {
+            if (!Exists(key) || IsExpired(key)) return "-2";
+            if (!_expiry.TryGetValue(key, out long expiryTime)) return "-1";
+            
+            long remaining = expiryTime - DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+            return Math.Max(1, remaining).ToString();
+        }
+
+        public string Persist(string key)
+        {
+            if (!Exists(key)) return "0";
+            if (!_expiry.ContainsKey(key)) return "0";
+            
+            _expiry.TryRemove(key, out _);
+            return "1";
+        }
+
+        public void StartExpiryBackgroundTask(CancellationToken cancellationToken = default)
+        {
+            Task.Run(async () =>
+            {
+                while (!cancellationToken.IsCancellationRequested)
+                {
+                    foreach (var key in _expiry.Keys)
+                    {
+                        IsExpired(key);
+                    }
+                    await Task.Delay(100, cancellationToken);
+                }
+            }, cancellationToken);
         }
         #endregion
     }

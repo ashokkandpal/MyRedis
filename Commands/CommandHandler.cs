@@ -2,6 +2,7 @@ using MyRedis.Commands.Hash;
 using MyRedis.Commands.List;
 using MyRedis.Commands.Set;
 using MyRedis.Commands.SortedSet;
+using MyRedis.Commands.Expiry;
 using MyRedis.Core;
 
 namespace MyRedis.Commands
@@ -45,7 +46,13 @@ namespace MyRedis.Commands
                 { "ZADD", new ZAddCommand(store) },
                 { "ZRANGE", new ZRangeCommand(store) },
                 { "ZSCORE", new ZScoreCommand(store) },
-                { "ZCARD", new ZCardCommand(store) }
+                { "ZCARD", new ZCardCommand(store) },
+                // Expiry
+                { "EXPIRE", new ExpireCommand(store) },
+                { "PEXPIRE", new PExpireCommand(store) },
+                { "TTL", new TtlCommand(store) },
+                { "PTTL", new PTtlCommand(store) },
+                { "PERSIST", new PersistCommand(store) }
             };
         }
 
